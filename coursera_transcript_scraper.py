@@ -11,9 +11,9 @@ Usage:
     python coursera_transcript_scraper.py
 
 The script will:
-    1. Ask for your Coursera email, password, and course URL
-    2. Log in automatically (browser opens visibly so you can handle 2FA if needed)
-    3. Scrape all module transcripts in the background
+    1. Ask for the course URL
+    2. Open a browser for you to manually log in
+    3. Scrape all module transcripts automatically
     4. Save everything to a nicely formatted PDF
 """
 
@@ -22,7 +22,6 @@ import sys
 import time
 import re
 import json
-import getpass
 from datetime import datetime
 
 # ==============================================================================
@@ -55,16 +54,10 @@ from reportlab.lib.enums import TA_LEFT, TA_CENTER
 # Edit these defaults or leave blank to be prompted
 # ==============================================================================
 
-DEFAULT_EMAIL    = ""          # e.g. "you@gmail.com"
-DEFAULT_PASSWORD = ""          # leave blank to be prompted securely
 DEFAULT_COURSE_URL = ""        # e.g. "https://www.coursera.org/learn/machine-learning"
 OUTPUT_PDF = "coursera_transcripts.pdf"
 CHECKPOINT_JSON = "coursera_transcripts_checkpoint.json"
 
-# Set to True to run Chrome in the background (headless).
-# NOTE: Coursera's login page sometimes blocks headless browsers.
-# Keep False on first run; switch to True once login works.
-HEADLESS = False
 
 # Seconds to wait for page elements before timing out
 WAIT_TIMEOUT = 20
@@ -74,10 +67,9 @@ WAIT_TIMEOUT = 20
 # Browser Setup
 # ==============================================================================
 
-def build_driver(headless: bool = False) -> webdriver.Chrome:
+def build_driver() -> webdriver.Chrome:
     options = Options()
-    if headless:
-        options.add_argument("--headless=new")
+    options.page_load_strategy = 'eager'
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-blink-features=AutomationControlled")
@@ -102,51 +94,11 @@ def build_driver(headless: bool = False) -> webdriver.Chrome:
 # Login
 # ==============================================================================
 
-def login(driver: webdriver.Chrome, email: str, password: str) -> bool:
-    print("\n[1/4] Logging in to Coursera...")
-    driver.get("https://www.coursera.org/")
-    time.sleep(2)
-
-    # Click 'Log In'
-    try:
-        login_btn = WebDriverWait(driver, WAIT_TIMEOUT).until(
-            EC.element_to_be_clickable(
-                (By.XPATH, "//a[contains(@href,'/login') or contains(text(),'Log In')]")
-            )
-        )
-        login_btn.click()
-    except TimeoutException:
-        driver.get("https://www.coursera.org/login")
-
-    time.sleep(2)
-
-    # Fill email
-    try:
-        email_field = WebDriverWait(driver, WAIT_TIMEOUT).until(
-            EC.presence_of_element_located((By.ID, "email"))
-        )
-        email_field.clear()
-        email_field.send_keys(email)
-    except TimeoutException:
-        print("  [Error] Could not find email field. Please log in manually in the browser.")
-        input("  Press ENTER after you have logged in...")
-        return True
-
-    # Fill password
-    pwd_field = driver.find_element(By.ID, "password")
-    pwd_field.clear()
-    pwd_field.send_keys(password)
-
-    # Submit
-    driver.find_element(By.XPATH, "//button[@type='submit']").click()
-    time.sleep(4)
-
-    # Handle 2FA / CAPTCHA - wait for user if needed
-    if "login" in driver.current_url.lower() or "challenge" in driver.current_url.lower():
-        print("  [Warning] 2FA or CAPTCHA detected.")
-        print("     Complete it in the browser window, then come back here.")
-        input("  Press ENTER once you are logged in...")
-
+def login(driver: webdriver.Chrome) -> bool:
+    print("\n[1/4] Waiting for manual login to Coursera...")
+    driver.get("https://www.coursera.org/login")
+    print("  Please log in using the opened browser window.")
+    input("  Press ENTER here in the terminal once you are logged in...")
     print("  [Success] Logged in.")
     return True
 
@@ -395,9 +347,9 @@ def _expand_all_sections(driver: webdriver.Chrome):
             for btn in btns:
                 try:
                     driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
-                    time.sleep(0.2)
+                    time.sleep(0.05)
                     driver.execute_script("arguments[0].click();", btn)
-                    time.sleep(0.5)
+                    time.sleep(0.1)
                 except Exception:
                     pass
         except Exception:
@@ -411,7 +363,7 @@ def _expand_all_sections(driver: webdriver.Chrome):
 def extract_transcript(driver: webdriver.Chrome, lecture: dict) -> str:
     """Navigate to a lecture page and extract its transcript text."""
     driver.get(lecture["url"])
-    time.sleep(3)
+    time.sleep(1)
 
     # 1) Look for transcript tab / panel
     transcript_xpaths = [
@@ -428,7 +380,7 @@ def extract_transcript(driver: webdriver.Chrome, lecture: dict) -> str:
                 EC.element_to_be_clickable((By.XPATH, xpath))
             )
             driver.execute_script("arguments[0].click();", btn)
-            time.sleep(1.5)
+            time.sleep(0.5)
             break
         except Exception:
             pass
@@ -627,11 +579,9 @@ def main():
     print("  Coursera Transcript Scraper & PDF Generator")
     print("=" * 60)
 
-    # Gather credentials
-    email = DEFAULT_EMAIL or input("\nCoursera email: ").strip()
-    password = DEFAULT_PASSWORD or getpass.getpass("Coursera password (hidden): ")
+    # Gather configuration
     course_url = DEFAULT_COURSE_URL or input(
-        "Course URL (e.g. https://www.coursera.org/learn/machine-learning): "
+        "\nCourse URL (e.g. https://www.coursera.org/learn/machine-learning): "
     ).strip()
 
     if not re.search(r"coursera\.org/learn/", course_url):
@@ -641,13 +591,11 @@ def main():
     course_title = course_slug.replace("-", " ").title()
 
     # Launch browser
-    print(f"\n  Headless mode: {'ON (background)' if HEADLESS else 'OFF (visible)'}")
-    print("  Tip: Set HEADLESS = True at the top of this file to run in background.")
-    driver = build_driver(headless=HEADLESS)
+    driver = build_driver()
 
     try:
         # Login
-        login(driver, email, password)
+        login(driver)
 
         # Collect lectures
         lectures = get_all_lecture_links(driver, course_url)
@@ -698,7 +646,7 @@ def main():
                     "lectures": enriched,
                 }, f, indent=2, ensure_ascii=False)
 
-            time.sleep(1)  # polite delay
+            time.sleep(0.1)  # polite delay
 
     finally:
         driver.quit()
@@ -708,11 +656,6 @@ def main():
 
     print("\n[Success] Done!")
     print(f"    Output file: {os.path.abspath(OUTPUT_PDF)}")
-    print(
-        "\n[Tip] To run in the background next time:\n"
-        "    Set  HEADLESS = True  at the top of the script,\n"
-        "      then run: nohup python coursera_transcript_scraper.py &"
-    )
 
 
 if __name__ == "__main__":
