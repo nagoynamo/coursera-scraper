@@ -20,6 +20,11 @@ coursera-scraper scrape "https://www.coursera.org/learn/python" --browser firefo
 # Legacy interactive mode (still works)
 python coursera_transcript_scraper.py
 
+# Export transcripts from checkpoint (no re-scrape)
+./export.sh
+./export.sh path/to/checkpoint.json
+./export.sh path/to/checkpoint.json output-dir
+
 # Debug helpers
 coursera-scraper browsers    # list detected browsers
 coursera-scraper version

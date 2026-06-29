@@ -20,6 +20,10 @@ debug
 .cache
 .serena
 
+# export outputs and scraped course directories
+exports/
+introduction-to-data-analytics-course/
+
 # python
 *.py[cod]
 *.pyo
@@ -41,3 +45,6 @@ venv/
 .vscode/
 
 *.html
+
+
+/coursera_scraper.egg-info
