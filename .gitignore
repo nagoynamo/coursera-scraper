@@ -48,3 +48,7 @@ venv/
 
 
 /coursera_scraper.egg-info
+
+/.tokensave
+# nested duplicate clone
+coursera-scraper/

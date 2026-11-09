@@ -11,6 +11,45 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.webdriver.edge.service import Service as EdgeService
+
+
+# Env vars that tell the dynamic loader / GTK / GIO where to find libraries and
+# modules. When this scraper is launched from a terminal inside snap-packaged
+# software (e.g. VS Code installed as a snap), the shell inherits versions of
+# these pointing into the snap's private library set — things like
+# GIO_MODULE_DIR=~/snap/code/common/.cache/gio-modules. A real system browser
+# then follows them into the snap, loads a module built against the snap's old
+# glibc, and dies with "symbol lookup error: .../libpthread.so.0: undefined
+# symbol __libc_pthread_init". geckodriver/chromedriver only see the child exit
+# with status 127. We strip these vars — but only when their value actually
+# points at /snap or ~/snap — so on a normal machine this changes nothing.
+_SNAP_LOADER_VARS = (
+    "GIO_MODULE_DIR",
+    "GTK_PATH",
+    "GTK_EXE_PREFIX",
+    "GTK_IM_MODULE_FILE",
+    "GDK_PIXBUF_MODULE_FILE",
+    "GDK_PIXBUF_MODULEDIR",
+    "GSETTINGS_SCHEMA_DIR",
+    "LOCPATH",
+    "LD_LIBRARY_PATH",
+    "LD_PRELOAD",
+)
+
+
+def _clean_env() -> dict[str, str]:
+    """Copy the current environment, dropping snap-loader vars that would make a
+    system browser load libraries from a snap sandbox and crash on launch."""
+    env = dict(os.environ)
+    snap_roots = ("/snap/", os.path.expanduser("~/snap/"))
+    for var in _SNAP_LOADER_VARS:
+        val = env.get(var)
+        if val and any(part.startswith(snap_roots) for part in val.split(os.pathsep)):
+            env.pop(var, None)
+    return env
 
 
 class Browser(Enum):
@@ -150,7 +189,7 @@ class BrowserManager:
                 exe = _find_executable(Browser.CHROMIUM)
                 if exe:
                     opts.binary_location = exe
-            driver = webdriver.Chrome(options=opts)
+            driver = webdriver.Chrome(options=opts, service=ChromeService(env=_clean_env()))
 
         elif browser == Browser.EDGE:
             opts = EdgeOptions()
@@ -172,7 +211,7 @@ class BrowserManager:
                 profile_dir.mkdir(parents=True, exist_ok=True)
                 opts.add_argument(f"--user-data-dir={profile_dir}")
                 opts.add_argument("--profile-directory=Default")
-            driver = webdriver.Edge(options=opts)
+            driver = webdriver.Edge(options=opts, service=EdgeService(env=_clean_env()))
 
         elif browser == Browser.FIREFOX:
             opts = FirefoxOptions()
@@ -186,7 +225,7 @@ class BrowserManager:
                 profile_dir.mkdir(parents=True, exist_ok=True)
                 opts.add_argument("-profile")
                 opts.add_argument(str(profile_dir))
-            driver = webdriver.Firefox(options=opts)
+            driver = webdriver.Firefox(options=opts, service=FirefoxService(env=_clean_env()))
 
         else:
             raise ValueError(f"Unsupported browser: {browser}")

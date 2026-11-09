@@ -50,7 +50,12 @@ class SessionManager:
             WebDriverWait(driver, 10).until(
                 lambda d: d.execute_script("return document.readyState") in ("complete", "interactive")
             )
-            return "login" not in driver.current_url
+            url = driver.current_url
+            # Anonymous visitors get bounced off /my-learning too — Coursera sends them
+            # to the homepage ("/"), not always to a URL containing "login". Checking
+            # only for the absence of "login" was a false positive: no redirect at all
+            # also reads as "logged in". Require that we actually stayed on /my-learning.
+            return "/my-learning" in url and "login" not in url
         except Exception:
             return False
 

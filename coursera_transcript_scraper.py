@@ -83,18 +83,24 @@ def login(driver: webdriver.Chrome, headless: bool = False, session_mgr=None) ->
         print("Run: coursera-scraper login")
         sys.exit(1)
 
+    # No usable session, and headless mode has no window to log in with.
+    if headless:
+        print("\n[Error] Not logged in, and headless mode can't show a login window.")
+        print("Run: coursera-scraper login")
+        sys.exit(1)
+
     # Manual login (first run or direct script usage)
     driver.get("https://www.coursera.org/login")
-    if headless:
-        print("  Headless mode: skipping manual login prompt.")
-    else:
-        print("  Please log in using the opened browser window.")
-        input("  Press ENTER here in the terminal once you are logged in...")
+    print("  Please log in using the opened browser window.")
+    input("  Press ENTER here in the terminal once you are logged in...")
 
-    if session_mgr:
-        session_mgr.save_session(driver)
-        print("  Session saved — future runs will skip this step.")
+    if not (session_mgr and session_mgr.is_logged_in(driver)):
+        print("\n[Error] Login could not be verified. Session not saved.")
+        print("Make sure you completed login before pressing ENTER.")
+        sys.exit(1)
 
+    session_mgr.save_session(driver)
+    print("  Session saved — future runs will skip this step.")
     print("  [Success] Login complete.")
     return True
 
